@@ -46,7 +46,7 @@ class EvalContainer {
 
 		// Don't execute code with disallowed words.
 		const normalizedCode = normalize(code);
-		for (const word of ["client", "send", "reply", "stringcharcodeat", "stringfromcharcode", "tostring", "textdecoder"]) {
+		for (const word of ["client", "send", "reply", "stringfromcharcode", "tostring", "textdecoder"]) {
 			if (normalizedCode.includes(word)) {
 				return {
 					title: "Disallowed Word",
