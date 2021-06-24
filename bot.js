@@ -1,7 +1,7 @@
 const { Client, MessageEmbed } = require("discord.js");
 
 // Create client.
-// Invite link: https://discord.com/api/oauth2/authorize?client_id=857292742120308756&permissions=117824&scope=applications.commands%20bot
+// Invite link: https://discord.com/api/oauth2/authorize?client_id=857693045126463518&permissions=3072&scope=applications.commands%20bot
 const client = new Client({ ws: { intents: [ "GUILD_MESSAGES" ] } });
 
 // Application getter.
