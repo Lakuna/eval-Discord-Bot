@@ -2,22 +2,26 @@ const { Client } = require("discord.js");
 
 class EvalContainer {
 	constructor(interaction) {
-		this.interaction = interaction;
+		this.interaction = {};
+		Object.assign(this.interaction, interaction);
 	}
 
 	async eval(code) {
 		const normalize = (string) => string.toLowerCase().replace(/[^a-z]/g, '');
 
 		// Find the guild.
-		this.guild = await client.guilds.fetch(this.interaction.guild_id);
+		this.guild = {};
+		Object.assign(this.guild, await client.guilds.fetch(this.interaction.guild_id));
 		if (!this.guild) { return console.error("Failed to fetch interaction's guild."); }
 
 		// Find the member.
-		this.member = await this.guild.members.fetch(this.interaction.member.user.id);
+		this.member = {};
+		Object.assign(this.member, await this.guild.members.fetch(this.interaction.member.user.id));
 		if (!this.member) { return console.error("Failed to fetch interaction's member."); }
 
 		// Find the channel.
-		this.channel = await client.channels.fetch(this.interaction.channel_id);
+		this.channel = {};
+		Object.assign(this.channel, await client.channels.fetch(this.interaction.channel_id));
 		if (!this.channel) { return console.error("Failed to find interaction's channel."); }
 
 		// Get code from message content.
@@ -46,7 +50,7 @@ class EvalContainer {
 
 		// Don't execute code with disallowed words.
 		const normalizedCode = normalize(code);
-		for (const word of ["client", "send", "reply", "stringfromcharcode", "tostring", "textdecoder"]) {
+		for (const word of ["send", "reply"]) {
 			if (normalizedCode.includes(word)) {
 				return {
 					title: "Disallowed Word",
@@ -151,24 +155,12 @@ client.ws.on("INTERACTION_CREATE", async (interaction) => {
 					type: "rich",
 					description: "Instead of supplying code directly, you may pass *{snowflake}* into the **code** parameter to supply a message's content as code:" +
 						"\n\nMessage #12345:```js\nclass Foo {\n\tconstructor() {\n\t\tthis.bar = \"Hello, world!\";\n\t}\n}\n\nreturn new Foo().bar;```" +
-						"\n\nUse command: `/eval {12345}`",
+						"\n\n**Use command:** `/eval {12345}`",
 					color: INFO_COLOR,
 					fields: [
 						{
-							name: "this.interaction",
-							value: "The eval interaction (from the Discord API)."
-						},
-						{
-							name: "this.channel",
-							value: "The current TextChannel (Discord.js)."
-						},
-						{
-							name: "this.guild",
-							value: "The current Guild (Discord.js)."
-						},
-						{
-							name: "this.member",
-							value: "You (GuildMember; Discord.js)."
+							name: "this",
+							value: "Contains references to certain Discord objects. Try inspecting it to find out what you can do!"
 						}
 					]
 				}] }
