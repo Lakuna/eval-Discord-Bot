@@ -67,6 +67,9 @@ class EvalContainer {
 		if (code.endsWith("```")) { code = code.substring(0, code.length - 3); }
 		code = code.trim();
 
+		// Remove disallowed global variables.
+		for (const word of ["global", "process"]) { code = `const ${word} = {};\n${code}`; }
+
 		// Execute code.
 		let output;
 		try {
@@ -148,6 +151,8 @@ client.ws.on("INTERACTION_CREATE", async (interaction) => {
 				data: { embeds: [ data ] }
 			} });
 		case "docs":
+			console.log(global); // TODO: Delete.
+
 			return client.api.interactions(interaction.id, interaction.token).callback.post({ data: {
 				type: 4,
 				data: { embeds: [{
