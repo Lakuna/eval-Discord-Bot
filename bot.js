@@ -1,5 +1,33 @@
 const { Client } = require("discord.js");
 
+const paste = (content) => new Promise((resolve) => {
+	const query = require("qs").stringify({
+		api_option:				"paste",
+		api_dev_key:			process.env.PASTEBIN_API_KEY,
+		api_paste_code:			content,
+		api_paste_private:		0,
+		api_paste_name:			"output.txt",
+		api_paste_expire_date:	"10M",
+		api_paste_format:		"json",
+		api_user_key:			""
+	});
+
+	const request = require("https").request("https://pastebin.com/api/api_post.php", {
+		headers: {
+			"Content-Type":		"application/x-www-form-urlencoded",
+			"Content-Length":	query.length
+		},
+		method:					"POST"
+	}, (response) => {
+		let data = "";
+		response.on("data", (chunk) => data += chunk);
+		response.on("end", () => resolve(data));
+	});
+
+	request.write(query);
+	request.end();
+});
+
 class EvalContainer {
 	constructor(interaction) {
 		this.interaction = {};
@@ -11,17 +39,20 @@ class EvalContainer {
 
 		// Find the guild.
 		this.guild = {};
-		Object.assign(this.guild, await client.guilds.fetch(this.interaction.guild_id));
+		const guild = await client.guilds.fetch(this.interaction.guild_id);
+		Object.assign(this.guild, guild);
 		if (!this.guild) { return console.error("Failed to fetch interaction's guild."); }
 
 		// Find the member.
 		this.member = {};
-		Object.assign(this.member, await this.guild.members.fetch(this.interaction.member.user.id));
+		const member = await this.guild.members.fetch(this.interaction.member.user.id);
+		Object.assign(this.member, member);
 		if (!this.member) { return console.error("Failed to fetch interaction's member."); }
 
 		// Find the channel.
 		this.channel = {};
-		Object.assign(this.channel, await client.channels.fetch(this.interaction.channel_id));
+		const channel = await client.channels.fetch(this.interaction.channel_id);
+		Object.assign(this.channel, channel);
 		if (!this.channel) { return console.error("Failed to find interaction's channel."); }
 
 		// Get code from message content.
@@ -101,11 +132,25 @@ class EvalContainer {
 
 		// Make sure that output is short enough for Discord to print.
 		if (output.length > 2048) {
-			return {
-				title: "Output Length",
-				type: "rich",
-				description: "Your output is too long for Discord to print.",
-				color: WARNING_COLOR
+			// Post to Pastebin.
+			try {
+				paste(output).then((url) => member.send(url));
+
+				return {
+					title: "Output",
+					type: "rich",
+					description: "Your output is too long for Discord to print, so it has been posted to Pastebin."
+					+ "You will receive a DM in a moment with a link to your paste.\n\n"
+					+ "**Note:** the paste is set to expire in 10 minutes. If it expires before that, Pastebin's filters detected your output as suspicious and automatically removed it.",
+					color: SUCCESS_COLOR
+				};
+			} catch {
+				return {
+					title: "Output Length",
+					type: "rich",
+					description: "Your output is too long for Discord to print.",
+					color: WARNING_COLOR
+				};
 			}
 		}
 
