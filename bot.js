@@ -6,7 +6,7 @@ class EvalContainer {
 		Object.assign(this.interaction, interaction);
 	}
 
-	async eval(code) {
+	async eval(code, fromMessage) {
 		const normalize = (string) => string.toLowerCase().replace(/[^a-z]/g, '');
 
 		// Find the guild.
@@ -25,17 +25,16 @@ class EvalContainer {
 		if (!this.channel) { return console.error("Failed to find interaction's channel."); }
 
 		// Get code from message content.
-		if (/{\d+}/.test(code)) {
-			const message = await this.channel.messages.fetch(code.substring(1, code.length - 1));
-			if (!message) {
-				return {
-					title: "Unknown Message",
-					type: "rich",
-					description: "Failed to find the referenced message. Make sure that you're targeting a message from this channel.",
-					color: ERROR_COLOR
-				};
-			}
-			code = message.cleanContent;
+		if (fromMessage) {
+			const messageNotFoundOutput = {
+				title: "Unknown Message",
+				type: "rich",
+				description: "Failed to find the referenced message. Make sure that you're targeting a message from this channel.",
+				color: ERROR_COLOR
+			};
+
+			try { code = (await this.channel.messages.fetch(code)).cleanContent; } catch { return messageNotFoundOutput; }
+			if (!code) { return messageNotFoundOutput; }
 		}
 
 		// Warn the user if the code has no output.
@@ -145,29 +144,26 @@ client.ws.on("INTERACTION_CREATE", async (interaction) => {
 	switch (interaction.data.name) {
 		case "eval":
 			const code = interaction.data.options.find((option) => option.name == "code").value.trim();
-			const data = await new EvalContainer(interaction).eval(code);
+			const output = await new EvalContainer(interaction).eval(code);
 			return client.api.interactions(interaction.id, interaction.token).callback.post({ data: {
 				type: 4,
-				data: { embeds: [ data ] }
+				data: { embeds: [ output ] }
+			} });
+		case "evalmessage":
+			const snowflake = interaction.data.options.find((option) => option.name == "snowflake").value;
+			const messageOutput = await new EvalContainer(interaction).eval(snowflake, true);
+			return client.api.interactions(interaction.id, interaction.token).callback.post({ data: {
+				type: 4,
+				data: { embeds: [ messageOutput ] }
 			} });
 		case "docs":
-			console.log(global); // TODO: Delete.
-
 			return client.api.interactions(interaction.id, interaction.token).callback.post({ data: {
 				type: 4,
 				data: { embeds: [{
 					title: "Documentation",
 					type: "rich",
-					description: "Instead of supplying code directly, you may pass *{snowflake}* into the **code** parameter to supply a message's content as code:" +
-						"\n\nMessage #12345:```js\nclass Foo {\n\tconstructor() {\n\t\tthis.bar = \"Hello, world!\";\n\t}\n}\n\nreturn new Foo().bar;```" +
-						"\n\n**Use command:** `/eval {12345}`",
-					color: INFO_COLOR,
-					fields: [
-						{
-							name: "this",
-							value: "Contains references to certain Discord objects. Try inspecting it to find out what you can do!"
-						}
-					]
+					description: "`this` contains references to some Discord objects. Try inspecting it to find out what you can do!```js\nreturn Object.keys(this);```",
+					color: INFO_COLOR
 				}] }
 			} });
 	}
