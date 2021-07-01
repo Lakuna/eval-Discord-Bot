@@ -98,7 +98,7 @@ class EvalContainer {
 		code = code.trim();
 
 		// Remove disallowed global variables.
-		for (const word of ["global", "process"]) { code = `const ${word} = {};\n${code}`; }
+		for (const word of ["process", "globalThis"].concat(Object.keys(globalThis))) { code = `const ${word} = {};\n${code}`; }
 
 		// Execute code.
 		let output;
