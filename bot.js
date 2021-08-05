@@ -28,141 +28,102 @@ const paste = (content) => new Promise((resolve) => {
 	request.end();
 });
 
-class EvalContainer {
-	constructor(interaction) {
-		this.interaction = {};
-		Object.assign(this.interaction, interaction);
+const safeEval = async (interaction, code, fromMessage) => {
+	const normalize = (string) => string.toLowerCase().replace(/[^a-z]/g, '');
+
+	const guild = await client.guilds.fetch(interaction.guild_id);
+	if (!guild) { throw new Error("Failed to fetch interaction's guild."); }
+
+	// Create the bind point for the function call.
+	let self = Object.create(null); // Create self using this method to prevent making a constructor.
+	Object.assign(self, {
+		interaction,
+		guild,
+		member: await guild.members.fetch(interaction.member.user.id),
+		channel: await client.channels.fetch(interaction.channel_id)
+	});
+
+	// Get code from message content if necessary.
+	if (fromMessage) {
+		const messageNotFoundOutput = {
+			title: "Unknown Message",
+			type: "rich",
+			description: "Failed to find the referenced message. Make sure that you're targeting a message from this channel.",
+			color: ERROR_COLOR
+		};
+
+		try { code = (await self.channel.messages.fetch(code)).cleanContent; } catch { return messageNotFoundOutput; }
+		if (!code) { return messageNotFoundOutput; }
 	}
 
-	async eval(code, fromMessage) {
-		const normalize = (string) => string.toLowerCase().replace(/[^a-z]/g, '');
+	// Warn the user if the code has no output.
+	if (!code.includes("return")) {
+		return {
+			title: "No Output",
+			type: "rich",
+			description: "Your code never calls return, so it won't have any output.",
+			color: WARNING_COLOR
+		};
+	}
 
-		// Find the guild.
-		this.guild = {};
-		const guild = await client.guilds.fetch(this.interaction.guild_id);
-		Object.assign(this.guild, guild);
-		if (!this.guild) { return console.error("Failed to fetch interaction's guild."); }
+	// Clean up code.
+	if (code.startsWith("```js")) { code = code.substring("```js".length); }
+	if (code.startsWith("```")) { code = code.substring("```".length); }
+	if (code.endsWith("```")) { code = code.substring(0, code.length - "```".length); }
+	code = code.trim();
 
-		// Find the member.
-		this.member = {};
-		const member = await this.guild.members.fetch(this.interaction.member.user.id);
-		Object.assign(this.member, member);
-		if (!this.member) { return console.error("Failed to fetch interaction's member."); }
+	// Remove disallowed global variables.
+	for (const word of ["process", "globalThis"].concat(Object.keys(globalThis))) { code = `const ${word} = {};\n${code}`; }
 
-		// Find the channel.
-		this.channel = {};
-		const channel = await client.channels.fetch(this.interaction.channel_id);
-		Object.assign(this.channel, channel);
-		if (!this.channel) { return console.error("Failed to find interaction's channel."); }
+	// Execute code.
+	let output;
+	try {
+		output = require("util").inspect(Function(code).bind(self)());
+	} catch (error) {
+		return {
+			title: "Error",
+			type: "rich",
+			description: "Failed to execute your code.",
+			color: ERROR_COLOR,
+			fields: [{
+				name: "Error",
+				value: `${error}`
+			}]
+		};
+	}
 
-		// Get code from message content.
-		if (fromMessage) {
-			const messageNotFoundOutput = {
-				title: "Unknown Message",
-				type: "rich",
-				description: "Failed to find the referenced message. Make sure that you're targeting a message from this channel.",
-				color: ERROR_COLOR
-			};
+	// Make sure that output is short enough for Discord to print.
+	if (output.length > 2048) {
+		// Post to Pastebin.
+		try {
+			paste(output).then((url) => self.member.send(url));
 
-			try { code = (await this.channel.messages.fetch(code)).cleanContent; } catch { return messageNotFoundOutput; }
-			if (!code) { return messageNotFoundOutput; }
-		}
-
-		// Warn the user if the code has no output.
-		if (!code.includes("return")) {
 			return {
-				title: "No Output",
+				title: "Output",
 				type: "rich",
-				description: "Your code never calls return, so it won't have any output.",
+				description: "Your output is too long for Discord to print, so it has been posted to Pastebin."
+				+ "You will receive a DM in a moment with a link to your paste.\n\n"
+				+ "**Note:** the paste is set to expire in 10 minutes. If it expires before that, Pastebin's filters detected your output as suspicious and automatically removed it.",
+				color: SUCCESS_COLOR
+			};
+		} catch {
+			return {
+				title: "Output Length",
+				type: "rich",
+				description: "Your output is too long for Discord to print.",
 				color: WARNING_COLOR
 			};
 		}
-
-		// Don't execute code with disallowed words.
-		const normalizedCode = normalize(code);
-		for (const word of []) {
-			if (normalizedCode.includes(word)) {
-				return {
-					title: "Disallowed Word",
-					type: "rich",
-					description: `Won't execute code with disallowed word "${word}"`,
-					color: WARNING_COLOR
-				};
-			}
-		}
-
-		// Clean up code.
-		if (code.startsWith("```js")) { code = code.substring(5); }
-		if (code.startsWith("```")) { code = code.substring(3); }
-		if (code.endsWith("```")) { code = code.substring(0, code.length - 3); }
-		code = code.trim();
-
-		// Remove disallowed global variables.
-		for (const word of ["process", "globalThis"].concat(Object.keys(globalThis))) { code = `const ${word} = {};\n${code}`; }
-
-		// Execute code.
-		let output;
-		try {
-			output = require("util").inspect(Function(code).bind(this)());
-		} catch (error) {
-			return {
-				title: "Error",
-				type: "rich",
-				description: "Failed to execute your code.",
-				color: ERROR_COLOR,
-				fields: [{
-					name: "Error",
-					value: `${error}`
-				}]
-			};
-		}
-
-		// Make sure that no sensitive data is in the output.
-		const normalizedOutput = normalize(output);
-		for (const word of [normalize(process.env.CLIENT_SECRET), normalize(process.env.TOKEN)]) {
-			if (normalizedOutput.includes(word)) {
-				return {
-					title: "Disallowed Output",
-					type: "rich",
-					description: "Won't return output with a disallowed word.",
-					color: WARNING_COLOR
-				};
-			}
-		}
-
-		// Make sure that output is short enough for Discord to print.
-		if (output.length > 2048) {
-			// Post to Pastebin.
-			try {
-				paste(output).then((url) => member.send(url));
-
-				return {
-					title: "Output",
-					type: "rich",
-					description: "Your output is too long for Discord to print, so it has been posted to Pastebin."
-					+ "You will receive a DM in a moment with a link to your paste.\n\n"
-					+ "**Note:** the paste is set to expire in 10 minutes. If it expires before that, Pastebin's filters detected your output as suspicious and automatically removed it.",
-					color: SUCCESS_COLOR
-				};
-			} catch {
-				return {
-					title: "Output Length",
-					type: "rich",
-					description: "Your output is too long for Discord to print.",
-					color: WARNING_COLOR
-				};
-			}
-		}
-
-		// Return output.
-		return {
-			title: "Output",
-			type: "rich",
-			description: `\`\`\`json\n${output}\`\`\``,
-			color: SUCCESS_COLOR
-		};
 	}
-}
+
+	// Return output.
+	return {
+		title: "Output",
+		type: "rich",
+		description: `\`\`\`json\n${output}\`\`\``,
+		color: SUCCESS_COLOR
+	};
+};
 
 // Create client.
 // Invite link: https://discord.com/api/oauth2/authorize?client_id=857693045126463518&permissions=3072&scope=applications.commands%20bot
@@ -189,14 +150,14 @@ client.ws.on("INTERACTION_CREATE", async (interaction) => {
 	switch (interaction.data.name) {
 		case "eval":
 			const code = interaction.data.options.find((option) => option.name == "code").value.trim();
-			const output = await new EvalContainer(interaction).eval(code);
+			const output = await safeEval(interaction, code);
 			return client.api.interactions(interaction.id, interaction.token).callback.post({ data: {
 				type: 4,
 				data: { embeds: [ output ] }
 			} });
 		case "evalmessage":
 			const snowflake = interaction.data.options.find((option) => option.name == "snowflake").value;
-			const messageOutput = await new EvalContainer(interaction).eval(snowflake, true);
+			const messageOutput = await safeEval(interaction, snowflake, true);
 			return client.api.interactions(interaction.id, interaction.token).callback.post({ data: {
 				type: 4,
 				data: { embeds: [ messageOutput ] }
