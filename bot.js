@@ -72,8 +72,8 @@ const safeEval = async (interaction, code, fromMessage) => {
 	if (code.endsWith("```")) { code = code.substring(0, code.length - "```".length); }
 	code = code.trim();
 
-	// Remove disallowed global variables.
-	for (const word of ["process", "globalThis"].concat(Object.keys(globalThis))) { code = `const ${word} = {};\n${code}`; }
+	// Log output to the console so that I can find suspicious messages if I have to.
+	console.log(`Executing code: ${code}`);
 
 	// Execute code.
 	let output;
@@ -143,7 +143,13 @@ client.on("error", console.error);
 client.on("shardError", console.error);
 
 // Startup.
-client.on("ready", () => client.user.setActivity("Evaluate"));
+client.on("ready", () => {
+	client.user.setActivity("Evaluate");
+
+	// Delete process so that it cannot be accessed by the user.
+	process = undefined;
+	delete process;
+});
 
 // Handle slash commands.
 client.ws.on("INTERACTION_CREATE", async (interaction) => {
